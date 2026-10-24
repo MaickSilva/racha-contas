@@ -1,5 +1,5 @@
 // Racha Contas: guarda o app em cache para abrir sem internet.
-const CACHE = "racha-contas-v1";
+const CACHE = "racha-contas-v2";
 const FILES = ["./", "index.html", "manifest.webmanifest", "icon.svg", "icon-192.png", "icon-512.png"];
 
 self.addEventListener("install", (e) => {
@@ -14,17 +14,27 @@ self.addEventListener("activate", (e) => {
   );
 });
 
-// Arquivos do app: cache primeiro, atualiza em segundo plano. Fontes: cache depois de baixar.
+// Página e arquivos do app: rede primeiro (pega a versão nova), cache se estiver offline.
+// Fontes e outros arquivos externos: cache primeiro.
 self.addEventListener("fetch", (e) => {
   if (e.request.method !== "GET") return;
+  const sameOrigin = new URL(e.request.url).origin === self.location.origin;
   e.respondWith(
     caches.open(CACHE).then(async (cache) => {
-      const hit = await cache.match(e.request, { ignoreSearch: true });
-      const net = fetch(e.request).then((res) => {
-        if (res && (res.ok || res.type === "opaque")) cache.put(e.request, res.clone());
-        return res;
-      }).catch(() => hit);
-      return hit || net;
+      if (sameOrigin) {
+        try {
+          const res = await fetch(e.request, { cache: "no-cache" });
+          if (res && res.ok) cache.put(e.request, res.clone());
+          return res;
+        } catch (err) {
+          return (await cache.match(e.request, { ignoreSearch: true })) || (await cache.match("index.html")) || Response.error();
+        }
+      }
+      const hit = await cache.match(e.request);
+      if (hit) return hit;
+      const res = await fetch(e.request);
+      if (res && (res.ok || res.type === "opaque")) cache.put(e.request, res.clone());
+      return res;
     })
   );
 });
