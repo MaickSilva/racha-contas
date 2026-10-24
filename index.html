@@ -1,0 +1,539 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#3A3FD4">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Racha Contas">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icon-192.png">
+<title>Racha Contas</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=Atkinson+Hyperlegible:wght@400;700&family=JetBrains+Mono:wght@500;700&display=swap">
+<style>
+html{-webkit-text-size-adjust:100%}
+:root{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+body{margin:0}
+[hidden]{display:none!important}
+/* Layout: uma coluna de bolso — mês no topo, avisos, depois uma ficha por conta com as cotas de cada pessoa */
+:root{
+  --bg:#EEF1F5; --surface:#FFFFFF; --sunk:#E3E8EF; --line:#D3DAE4;
+  --ink:#141B26; --muted:#5B6678;
+  --accent:#3A3FD4; --accent-ink:#FFFFFF; --accent-soft:#E4E5FB;
+  --ok:#17804F; --ok-soft:#DDF2E7; --warn:#A35F00; --warn-soft:#FBEBD2; --bad:#B8322D; --bad-soft:#F8E0DE;
+  --display:"Bricolage Grotesque", "Segoe UI", system-ui, sans-serif;
+  --body:"Atkinson Hyperlegible", system-ui, -apple-system, sans-serif;
+  --mono:"JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  --r:14px;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#0F131A; --surface:#181E28; --sunk:#222A36; --line:#2E3746;
+  --ink:#E9EDF4; --muted:#98A3B5;
+  --accent:#8C90FF; --accent-ink:#0F131A; --accent-soft:#272B52;
+  --ok:#5FD39A; --ok-soft:#173828; --warn:#F2B55C; --warn-soft:#3A2A12; --bad:#FF8A84; --bad-soft:#3E1D1C;
+  color-scheme:dark;
+}}
+:root[data-theme="dark"]{
+  --bg:#0F131A; --surface:#181E28; --sunk:#222A36; --line:#2E3746;
+  --ink:#E9EDF4; --muted:#98A3B5;
+  --accent:#8C90FF; --accent-ink:#0F131A; --accent-soft:#272B52;
+  --ok:#5FD39A; --ok-soft:#173828; --warn:#F2B55C; --warn-soft:#3A2A12; --bad:#FF8A84; --bad-soft:#3E1D1C;
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--ink);font-family:var(--body);font-size:16px;line-height:1.45}
+.wrap{max-width:640px;margin:0 auto;padding-block:20px 120px;padding-left:max(16px, env(safe-area-inset-left, 0px));padding-right:max(16px, env(safe-area-inset-right, 0px));display:flex;flex-direction:column;gap:22px}
+h1,h2,h3{font-family:var(--display);margin:0;text-wrap:balance;letter-spacing:-.01em}
+.num{font-family:var(--mono);font-variant-numeric:tabular-nums}
+.label{font-size:12px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);font-weight:700}
+button{font:inherit;color:inherit;cursor:pointer;border:0;background:none}
+button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+
+/* topo */
+.top{display:flex;flex-direction:column;gap:14px}
+.brand{display:flex;justify-content:space-between;align-items:center;gap:12px}
+.brand h1{font-size:26px}
+.monthnav{display:flex;align-items:center;gap:6px;background:var(--surface);border:1px solid var(--line);border-radius:999px;padding:4px}
+.monthnav button{width:36px;height:36px;border-radius:999px;font-size:18px;color:var(--muted)}
+.monthnav button:hover{background:var(--sunk);color:var(--ink)}
+.monthnav span{min-width:120px;text-align:center;font-weight:700;font-size:15px}
+.summary{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:16px;display:grid;grid-template-columns:1fr 1fr;gap:12px 16px}
+.summary .big{font-family:var(--mono);font-size:24px;font-weight:700;font-variant-numeric:tabular-nums}
+.summary .ok{color:var(--ok)}
+.bar{grid-column:1/-1;height:8px;background:var(--sunk);border-radius:99px;overflow:hidden}
+.bar i{display:block;height:100%;background:var(--ok);border-radius:99px;transition:width .3s}
+.summary .note{grid-column:1/-1;font-size:14px;color:var(--muted)}
+
+/* avisos */
+.section-head{display:flex;justify-content:space-between;align-items:baseline;gap:8px}
+.section-head h2{font-size:19px}
+.alerts{display:flex;flex-direction:column;gap:8px}
+.alert{display:flex;flex-direction:column;gap:10px;background:var(--surface);border:1px solid var(--line);border-left:4px solid var(--warn);border-radius:10px;padding:12px}
+.alert.bad{border-left-color:var(--bad)}
+.alert-head{display:flex;justify-content:space-between;align-items:flex-start;gap:10px}
+.alert-head .pill{white-space:nowrap;flex:none}
+.alert .txt{min-width:0}
+.chips{display:flex;flex-wrap:wrap;gap:8px}
+.chip{display:inline-flex;align-items:center;gap:8px;padding:6px 6px 6px 12px;border-radius:99px;background:var(--sunk);border:1px solid var(--line);font-size:14px;min-height:38px}
+.chip b,.chip span:first-child{font-weight:700}
+.chip .num{color:var(--muted);font-size:13px}
+.chip .ck{width:26px;height:26px;border-radius:99px;display:grid;place-items:center;background:var(--surface);border:1.5px solid var(--line);color:var(--muted);font-size:13px}
+.chip:hover .ck,.chip:focus-visible .ck{background:var(--ok);border-color:var(--ok);color:var(--surface)}
+.hint{margin:2px 0 0;font-size:13px;color:var(--muted)}
+.alert .txt b{display:block;font-size:15px}
+.alert .txt small{color:var(--muted);font-size:13px}
+.calm{background:var(--ok-soft);color:var(--ok);border-radius:10px;padding:12px 14px;font-weight:700;font-size:15px}
+
+/* contas */
+.list{display:flex;flex-direction:column;gap:14px}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);overflow:hidden}
+.card-head{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;padding:14px 16px 10px}
+.card-head h3{font-size:19px;overflow-wrap:anywhere}
+.card-head .meta{font-size:13px;color:var(--muted);margin-top:2px}
+.card-head .total{text-align:right;white-space:nowrap}
+.card-head .total .num{font-size:18px;font-weight:700}
+.iconbtn{width:34px;height:34px;border-radius:10px;color:var(--muted);display:inline-grid;place-items:center;flex:none}
+.iconbtn:hover{background:var(--sunk);color:var(--ink)}
+.rows{display:flex;flex-direction:column;border-top:1px solid var(--line)}
+.row{display:grid;grid-template-columns:1fr auto;gap:6px 10px;align-items:center;padding:10px 16px;border-bottom:1px dashed var(--line)}
+.row:last-child{border-bottom:0}
+.row .who{min-width:0}
+.row .who b{display:block;overflow-wrap:anywhere}
+.row .who .num{font-size:14px;color:var(--muted)}
+.row.me{background:var(--sunk)}
+.row.me .who b{font-weight:400;color:var(--muted)}
+.actions{display:flex;gap:6px;align-items:center;flex-wrap:wrap;justify-content:flex-end}
+.btn{display:inline-flex;align-items:center;gap:6px;padding:8px 12px;border-radius:10px;font-weight:700;font-size:14px;line-height:1.1;min-height:38px}
+.btn.primary{background:var(--accent);color:var(--accent-ink)}
+.btn.ghost{background:var(--sunk)}
+.btn.ghost:hover{background:var(--line)}
+.stamp{display:inline-flex;flex-direction:column;align-items:flex-end;padding:6px 10px;border-radius:10px;background:var(--ok-soft);color:var(--ok);font-weight:700;font-size:14px;line-height:1.15;border:1.5px solid currentColor;transform:rotate(-2deg)}
+.stamp small{font-weight:400;font-size:11px;font-family:var(--mono)}
+.pill{display:inline-block;padding:2px 8px;border-radius:99px;font-size:12px;font-weight:700}
+.pill.warn{background:var(--warn-soft);color:var(--warn)}
+.pill.bad{background:var(--bad-soft);color:var(--bad)}
+.pill.ok{background:var(--ok-soft);color:var(--ok)}
+.history{display:flex;gap:6px;align-items:center;padding:10px 16px 14px;border-top:1px solid var(--line);flex-wrap:wrap}
+.history .label{margin-right:4px}
+.hcell{display:flex;flex-direction:column;align-items:center;gap:3px;font-size:11px;color:var(--muted);font-family:var(--mono)}
+.hcell i{width:22px;height:22px;border-radius:6px;background:var(--sunk);border:1px solid var(--line)}
+.hcell i.full{background:var(--ok);border-color:var(--ok)}
+.hcell i.part{background:linear-gradient(135deg,var(--ok) 50%,var(--sunk) 50%);border-color:var(--ok)}
+.hcell i.none{background:var(--bad-soft);border-color:var(--bad)}
+.hcell.sel{color:var(--ink);font-weight:700}
+
+.empty{background:var(--surface);border:1.5px dashed var(--line);border-radius:var(--r);padding:28px 20px;text-align:center;display:flex;flex-direction:column;gap:12px;align-items:center}
+.empty p{margin:0;color:var(--muted);max-width:34ch}
+.offline{font-size:13px;color:var(--warn);background:var(--warn-soft);border-radius:10px;padding:8px 12px}
+
+.fab{position:fixed;right:max(16px, calc(env(safe-area-inset-right, 0px) + 16px));bottom:calc(env(safe-area-inset-bottom, 0px) + 18px);background:var(--accent);color:var(--accent-ink);border-radius:16px;padding:14px 18px;font-weight:700;box-shadow:0 8px 24px rgba(20,27,38,.25);display:flex;gap:8px;align-items:center;z-index:5}
+
+/* folha de edição */
+.overlay{position:fixed;inset:0;background:rgba(10,14,20,.5);z-index:20;display:flex;align-items:flex-end;justify-content:center}
+.sheet{background:var(--surface);width:100%;max-width:560px;max-height:92%;overflow-y:auto;border-radius:20px 20px 0 0;padding-block:18px calc(env(safe-area-inset-bottom, 0px) + 18px);padding-left:max(18px, env(safe-area-inset-left, 0px));padding-right:max(18px, env(safe-area-inset-right, 0px));display:flex;flex-direction:column;gap:16px}
+@media (min-width:600px){.overlay{align-items:center}.sheet{border-radius:20px}}
+.sheet-head{display:flex;justify-content:space-between;align-items:center}
+.sheet-head h2{font-size:21px}
+.field{display:flex;flex-direction:column;gap:6px}
+.field label,.field .label{font-size:13px;font-weight:700;color:var(--muted)}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+input[type=text],input[type=number],input[type=month],input[inputmode]{font:inherit;width:100%;min-width:0;padding:10px 12px;border-radius:10px;border:1px solid var(--line);background:var(--bg);color:var(--ink)}
+.seg{display:flex;background:var(--sunk);border-radius:10px;padding:3px}
+.seg button{flex:1;padding:8px;border-radius:8px;font-weight:700;font-size:14px;color:var(--muted)}
+.seg button[aria-pressed="true"]{background:var(--surface);color:var(--ink);box-shadow:0 1px 3px rgba(0,0,0,.12)}
+.check{display:flex;gap:10px;align-items:center;font-weight:700}
+.check input{width:20px;height:20px;accent-color:var(--accent)}
+.people{display:flex;flex-direction:column;gap:8px}
+.person{display:grid;grid-template-columns:1fr 110px 34px;gap:8px;align-items:center}
+.person.eq{grid-template-columns:1fr 34px}
+.preview{background:var(--sunk);border-radius:10px;padding:10px 12px;font-size:14px;display:flex;flex-direction:column;gap:4px}
+.preview div{display:flex;justify-content:space-between;gap:8px}
+.preview .err{color:var(--bad);font-weight:700}
+.sheet-foot{display:flex;gap:8px;justify-content:space-between;flex-wrap:wrap;align-items:center}
+.btn.danger{color:var(--bad);background:var(--bad-soft)}
+.confirm{display:flex;gap:8px;align-items:center;flex-wrap:wrap;font-size:14px}
+
+.toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(env(safe-area-inset-bottom, 0px) + 86px);background:var(--ink);color:var(--bg);padding:10px 16px;border-radius:10px;font-weight:700;font-size:14px;z-index:30;max-width:calc(100% - 32px)}
+@media (prefers-reduced-motion: reduce){*{transition:none!important}}
+.tools{display:flex;flex-wrap:wrap;gap:8px}
+.tools .btn{flex:1 1 auto;justify-content:center}
+.small{font-size:13px;color:var(--muted);margin:8px 0 0}
+</style>
+</head>
+<body>
+
+<div class="wrap" id="app">
+  <header class="top">
+    <div class="brand">
+      <h1>Racha Contas</h1>
+      <div class="monthnav">
+        <button id="prev" aria-label="Mês anterior">‹</button>
+        <span id="monthLabel">—</span>
+        <button id="next" aria-label="Próximo mês">›</button>
+      </div>
+    </div>
+    <div class="summary" id="summary">
+      <div><div class="label">A receber</div><div class="big" id="sumTotal">R$ 0,00</div></div>
+      <div><div class="label">Já recebido</div><div class="big ok" id="sumPaid">R$ 0,00</div></div>
+      <div class="bar"><i id="sumBar" style="width:0%"></i></div>
+      <div class="note" id="sumNote">Carregando suas contas…</div>
+    </div>
+  </header>
+  <section>
+    <div class="section-head"><h2>Avisos</h2><span class="label" id="alertCount"></span></div>
+    <div class="alerts" id="alerts" style="margin-top:10px"></div>
+  </section>
+  <section>
+    <div class="section-head"><h2>Contas</h2><span class="label" id="contaCount"></span></div>
+    <div class="list" id="list" style="margin-top:10px"></div>
+  </section>
+  <section>
+    <div class="section-head"><h2>Backup e notificações</h2></div>
+    <div class="tools" style="margin-top:10px">
+      <button class="btn ghost" id="notifBtn">Ativar notificações</button>
+      <button class="btn ghost" id="expBtn">Exportar backup</button>
+      <button class="btn ghost" id="impBtn">Importar backup</button>
+      <input type="file" id="impFile" accept="application/json,.json" hidden>
+    </div>
+    <p class="small" id="toolsNote">Os dados ficam só neste celular. Exporte um backup de vez em quando.</p>
+  </section>
+</div>
+<button class="fab" id="fab">＋ Nova conta</button>
+<div class="overlay" id="overlay" hidden></div>
+<div class="toast" id="toast" hidden></div>
+
+<script>
+(() => {
+  // ---------- utilidades ----------
+  const $ = (id) => document.getElementById(id);
+  const esc = (s) => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+  const brl = (c) => (c/100).toLocaleString("pt-BR",{style:"currency",currency:"BRL"});
+  const parseCents = (v) => { if (v==null) return null; const s=String(v).trim().replace(/[^\d,.-]/g,""); if(!s) return null; const n = s.includes(",") ? Number(s.replace(/\./g,"").replace(",",".")) : Number(s); return isFinite(n) ? Math.round(n*100) : null; };
+  const centsToInput = (c) => c==null ? "" : (c/100).toFixed(2).replace(".",",");
+  const uid = () => Math.random().toString(36).slice(2,10);
+  const ym = (d) => d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0");
+  const addM = (m,k) => { const [y,mo]=m.split("-").map(Number); return ym(new Date(y,mo-1+k,1)); };
+  const monthName = (m, short) => { const [y,mo]=m.split("-").map(Number); const d=new Date(y,mo-1,1);
+    if (short) return d.toLocaleDateString("pt-BR",{month:"short"}).replace(".","").slice(0,3);
+    const s=d.toLocaleDateString("pt-BR",{month:"long",year:"numeric"}).replace(" de "," "); return s[0].toUpperCase()+s.slice(1); };
+  const dueDate = (m, dia) => { const [y,mo]=m.split("-").map(Number); const last=new Date(y,mo,0).getDate(); return new Date(y,mo-1,Math.min(dia,last)); };
+  const today = () => { const d=new Date(); d.setHours(0,0,0,0); return d; };
+  const dayDiff = (a,b) => Math.round((a-b)/86400000);
+  const fmtDay = (iso) => new Date(iso).toLocaleDateString("pt-BR",{day:"2-digit",month:"2-digit"});
+
+  // ---------- estado ----------
+  const S = { contas: [], pags: {}, ready: false, mes: ym(new Date()), store: null };
+  let editing = null; // rascunho de conta em edição
+
+  function shares(c){
+    const ps = c.pessoas || [];
+    if (c.divisao === "personalizado"){
+      const list = ps.map(p => ({id:p.id, nome:p.nome, valor:p.valor||0}));
+      const soma = list.reduce((a,p)=>a+p.valor,0);
+      return { pessoas:list, meu: c.total - soma };
+    }
+    const n = ps.length + (c.euPago ? 1 : 0);
+    if (!n) return { pessoas:[], meu:c.total };
+    const base = Math.floor(c.total / n), rem = c.total - base*n;
+    const list = ps.map((p,i) => ({id:p.id, nome:p.nome, valor: base + (i<rem?1:0)}));
+    return { pessoas:list, meu: c.euPago ? base : 0 };
+  }
+  const pagKey = (cid,m) => cid+"_"+m;
+  const recebido = (cid,m,pid) => S.pags[pagKey(cid,m)]?.recebidos?.[pid] || null;
+  const ativaEm = (c,m) => m >= (c.inicio || "0000-00");
+
+  // ---------- armazenamento (db da conta, ou este navegador) ----------
+  function localStore(){
+    const KEY="racha-contas-v1";
+    let data={contas:{},pags:{}}; try{ data=JSON.parse(localStorage.getItem(KEY))||data; }catch(e){}
+    let cb=()=>{};
+    const save=()=>{ try{ localStorage.setItem(KEY,JSON.stringify(data)); }catch(e){} cb(data); };
+    return {
+      local:true,
+      dump(){ return JSON.parse(JSON.stringify(data)); },
+      load(d){ data={contas:d.contas||{},pags:d.pags||{}}; save(); },
+      subscribe(f){ cb=f; f(data); },
+      saveConta(c){ data.contas[c.id]=c; save(); return Promise.resolve(); },
+      deleteConta(id){ delete data.contas[id]; save(); return Promise.resolve(); },
+      savePag(p){ data.pags[pagKey(p.contaId,p.mes)]=p; save(); return Promise.resolve(); }
+    };
+  }
+  function attach(store){
+    S.store=store;
+    store.subscribe(({contas,pags})=>{
+      S.contas = Object.values(contas).sort((a,b)=>(a.dia-b.dia)||String(a.nome).localeCompare(b.nome));
+      S.pags = {...pags}; S.ready=true; render(); maybeNotify();
+    });
+  }
+  attach(localStore());
+
+  const write = (p) => p.catch(e => toast(e?.code==="quota_exceeded" ? "Espaço cheio: exclua contas antigas." : "Não salvou. Confira a conexão e tente de novo."));
+
+  // ---------- avisos ----------
+  function computeAlerts(){
+    const out=[], now=today(), cur=ym(now);
+    for (const c of S.contas){
+      const sh = shares(c);
+      for (let k=12; k>=0; k--){
+        const m = addM(cur,-k); if(!ativaEm(c,m)) continue;
+        const due = dueDate(m,c.dia), diff = dayDiff(due,now);
+        for (const p of sh.pessoas){
+          if (recebido(c.id,m,p.id)) continue;
+          let level=null, msg="";
+          if (m < cur){ level="bad"; msg = "Atrasado desde "+fmtDay(due.toISOString()); }
+          else if (diff < 0){ level="bad"; msg = "Venceu há "+(-diff)+(diff===-1?" dia":" dias"); }
+          else if (diff === 0){ level="warn"; msg = "Vence hoje"; }
+          else if (diff <= 3){ level="warn"; msg = "Vence em "+diff+(diff===1?" dia":" dias"); }
+          if (level){
+            let g = out.find(x=>x.c.id===c.id && x.m===m);
+            if(!g){ g={level,msg,c,m,pessoas:[]}; out.push(g); }
+            g.pessoas.push(p);
+          }
+        }
+      }
+    }
+    return out.sort((a,b)=>(a.level===b.level?0:a.level==="bad"?-1:1) || a.m.localeCompare(b.m));
+  }
+
+  // ---------- render ----------
+  function render(){
+    $("monthLabel").textContent = monthName(S.mes);
+    // resumo
+    let tot=0, paid=0, pend=0;
+    for (const c of S.contas){ if(!ativaEm(c,S.mes)) continue;
+      for (const p of shares(c).pessoas){ tot+=p.valor; if(recebido(c.id,S.mes,p.id)) paid+=p.valor; else pend++; } }
+    $("sumTotal").textContent = brl(tot); $("sumPaid").textContent = brl(paid);
+    $("sumBar").style.width = tot ? Math.round(paid/tot*100)+"%" : "0%";
+    $("sumNote").textContent = !S.ready ? "Carregando suas contas…" : !tot ? "Nenhuma cota para receber neste mês." : pend ? pend+(pend===1?" cota ainda falta":" cotas ainda faltam")+" em "+monthName(S.mes).toLowerCase()+"." : "Tudo recebido em "+monthName(S.mes).toLowerCase()+".";
+
+    // avisos
+    const al = S.ready ? computeAlerts() : [];
+    const nPend = al.reduce((s,a)=>s+a.pessoas.length,0);
+    $("alertCount").textContent = nPend ? nPend+" cota"+(nPend>1?"s":"")+" pendente"+(nPend>1?"s":"") : "";
+    try{ document.title = nPend ? "("+nPend+") Racha Contas" : "Racha Contas"; }catch(e){}
+    $("alerts").innerHTML = !S.ready ? "" : al.length ? al.map(a=>{
+      const falta = a.pessoas.reduce((s,p)=>s+p.valor,0);
+      return `<div class="alert ${a.level}">
+        <div class="alert-head">
+          <div class="txt"><b>${esc(a.c.nome)}</b><small>${monthName(a.m)} · ${a.msg}</small></div>
+          <span class="pill ${a.level}">falta <span class="num">${brl(falta)}</span></span>
+        </div>
+        <div class="chips">${a.pessoas.map(p=>`<button class="chip" data-act="pay" data-c="${a.c.id}" data-m="${a.m}" data-p="${p.id}" aria-label="Confirmar recebimento de ${esc(p.nome)}"><span>${esc(p.nome)}</span><span class="num">${brl(p.valor)}</span><span class="ck">✓</span></button>`).join("")}</div>
+      </div>`;}).join("") + `<p class="hint">Toque no nome de quem já te pagou para confirmar.</p>` : `<div class="calm">Nenhuma cobrança atrasada ou perto de vencer.</div>`;
+
+    // contas
+    const vis = S.contas.filter(c=>ativaEm(c,S.mes));
+    $("contaCount").textContent = S.contas.length ? vis.length+" neste mês" : "";
+    if (!S.ready){ $("list").innerHTML = ""; return; }
+    if (!S.contas.length){
+      $("list").innerHTML = `<div class="empty"><h3>Nenhuma conta cadastrada</h3><p>Cadastre uma conta que você paga e divide, diga com quem, e o app calcula a parte de cada um e acompanha mês a mês quem já te pagou.</p><button class="btn primary" data-act="new">Cadastrar primeira conta</button></div>`;
+      return;
+    }
+    if (!vis.length){ $("list").innerHTML = `<div class="empty"><p>Nenhuma conta começa antes de ${esc(monthName(S.mes).toLowerCase())}.</p></div>`; return; }
+    $("list").innerHTML = vis.map(cardHTML).join("");
+  }
+
+  function cardHTML(c){
+    const sh = shares(c), m=S.mes, due=dueDate(m,c.dia), diff=dayDiff(due,today());
+    const rows = sh.pessoas.map(p=>{
+      const r = recebido(c.id,m,p.id);
+      let status="";
+      if(!r){ if(diff<0) status=`<span class="pill bad">atrasado</span>`; else if(diff<=3) status=`<span class="pill warn">vence ${diff===0?"hoje":"em "+diff+"d"}</span>`; }
+      return `<div class="row">
+        <div class="who"><b>${esc(p.nome)}</b><span class="num">${brl(p.valor)}</span> ${status}</div>
+        <div class="actions">${ r
+          ? `<button class="stamp" data-act="unpay" data-c="${c.id}" data-m="${m}" data-p="${p.id}" title="Tocar para desfazer">Recebido<small>${fmtDay(r.em)}</small></button>`
+          : `<button class="btn ghost" data-act="copy" data-c="${c.id}" data-p="${p.id}" aria-label="Copiar cobrança para ${esc(p.nome)}">Cobrar</button><button class="btn primary" data-act="pay" data-c="${c.id}" data-m="${m}" data-p="${p.id}">Confirmar</button>` }
+        </div></div>`;
+    }).join("");
+    const me = (c.euPago || sh.meu>0) ? `<div class="row me"><div class="who"><b>Minha parte</b><span class="num">${brl(Math.max(sh.meu,0))}</span></div></div>` : "";
+    // histórico de 6 meses
+    const cells=[]; for(let k=5;k>=0;k--){ const mm=addM(m,-k); let cls="";
+      if (ativaEm(c,mm) && sh.pessoas.length){ const n=sh.pessoas.filter(p=>recebido(c.id,mm,p.id)).length;
+        const past = dueDate(mm,c.dia) < today();
+        cls = n===sh.pessoas.length ? "full" : n>0 ? "part" : past ? "none" : ""; }
+      else if(!ativaEm(c,mm)) cls="off";
+      cells.push(`<div class="hcell ${mm===m?"sel":""}" ${cls==="off"?'style="opacity:.35"':""}><i class="${cls}"></i>${monthName(mm,true)}</div>`); }
+    return `<article class="card">
+      <div class="card-head">
+        <div style="min-width:0"><h3>${esc(c.nome)}</h3><div class="meta">Vence dia ${c.dia} · ${sh.pessoas.length+(c.euPago?1:0)} pessoas · ${c.divisao==="personalizado"?"valores personalizados":"divisão igual"}</div></div>
+        <div style="display:flex;gap:4px;align-items:flex-start"><div class="total"><div class="label">Total</div><div class="num">${brl(c.total)}</div></div>
+        <button class="iconbtn" data-act="edit" data-c="${c.id}" aria-label="Editar ${esc(c.nome)}">✎</button></div>
+      </div>
+      <div class="rows">${rows}${me}</div>
+      <div class="history"><span class="label">Últimos meses</span>${cells.join("")}</div>
+    </article>`;
+  }
+
+  // ---------- ações ----------
+  function setPaid(cid,m,pid,on){
+    const c=S.contas.find(x=>x.id===cid); if(!c) return;
+    const cur = S.pags[pagKey(cid,m)] || {contaId:cid, mes:m, recebidos:{}};
+    const rec = {...(cur.recebidos||{})};
+    if(on){ const p=shares(c).pessoas.find(x=>x.id===pid); rec[pid]={em:new Date().toISOString(), valor:p?p.valor:0}; }
+    else delete rec[pid];
+    const doc={contaId:cid, mes:m, recebidos:rec};
+    S.pags[pagKey(cid,m)]=doc; render();
+    write(S.store.savePag(doc));
+    if(on){ const p=c.pessoas.find(x=>x.id===pid); toast("Recebimento de "+(p?.nome||"")+" confirmado"); }
+  }
+  async function copyCharge(cid,pid){
+    const c=S.contas.find(x=>x.id===cid); const p=shares(c).pessoas.find(x=>x.id===pid); if(!p) return;
+    const txt=`Oi, ${p.nome}! Sua parte de ${c.nome} em ${monthName(S.mes).toLowerCase()} é ${brl(p.valor)} (vence dia ${c.dia}).`;
+    try{ await navigator.clipboard.writeText(txt); toast("Mensagem copiada. Cole no WhatsApp."); }
+    catch(e){ showCopyFallback(txt); }
+  }
+  function showCopyFallback(txt){
+    $("overlay").hidden=false;
+    $("overlay").innerHTML=`<div class="sheet"><div class="sheet-head"><h2>Copie a mensagem</h2><button class="iconbtn" data-act="close" aria-label="Fechar">✕</button></div><input id="copyTxt" type="text" value="${esc(txt)}" readonly><p style="margin:0;color:var(--muted);font-size:14px">Selecione o texto e copie.</p></div>`;
+    const i=$("copyTxt"); i.focus(); i.select();
+  }
+
+  // ---------- formulário ----------
+  function openForm(c){
+    editing = c ? JSON.parse(JSON.stringify(c)) : {id:uid(), nome:"", total:null, dia:10, inicio:ym(new Date()), euPago:true, divisao:"igual", pessoas:[{id:uid(),nome:"",valor:null}], criadaEm:new Date().toISOString(), _new:true};
+    editing._totalTxt = centsToInput(editing.total);
+    editing.pessoas.forEach(p=>p._txt=centsToInput(p.valor));
+    editing._confirmDel=false;
+    $("overlay").hidden=false; renderForm(); setTimeout(()=>$("f-nome")?.focus(),30);
+  }
+  function renderForm(){
+    const e=editing, pers=e.divisao==="personalizado";
+    $("overlay").innerHTML=`<div class="sheet" role="dialog" aria-modal="true" aria-labelledby="f-title">
+      <div class="sheet-head"><h2 id="f-title">${e._new?"Nova conta":"Editar conta"}</h2><button class="iconbtn" data-act="close" aria-label="Fechar">✕</button></div>
+      <div class="field"><label for="f-nome">Nome da conta</label><input id="f-nome" type="text" placeholder="Ex.: Internet, Netflix, Luz" value="${esc(e.nome)}" data-f="nome"></div>
+      <div class="grid2">
+        <div class="field"><label for="f-total">Valor total (R$)</label><input id="f-total" inputmode="decimal" placeholder="50,00" value="${esc(e._totalTxt)}" data-f="total"></div>
+        <div class="field"><label for="f-dia">Dia do vencimento</label><input id="f-dia" type="number" min="1" max="31" value="${e.dia}" data-f="dia"></div>
+      </div>
+      <div class="field"><label for="f-inicio">Acompanhar a partir de</label><input id="f-inicio" type="month" value="${e.inicio}" data-f="inicio"></div>
+      <label class="check"><input id="f-eu" type="checkbox" ${e.euPago?"checked":""} data-f="euPago"> Eu também pago uma parte</label>
+      <div class="field"><span class="label">Como dividir</span>
+        <div class="seg"><button data-act="mode" data-v="igual" aria-pressed="${!pers}">Partes iguais</button><button data-act="mode" data-v="personalizado" aria-pressed="${pers}">Valor por pessoa</button></div></div>
+      <div class="field"><span class="label">Quem divide com você</span>
+        <div class="people">${e.pessoas.map((p,i)=>`<div class="person ${pers?"":"eq"}">
+          <input id="f-p-${p.id}" type="text" placeholder="Nome (ex.: Mãe)" value="${esc(p.nome)}" data-pi="${i}" data-pf="nome" aria-label="Nome da pessoa ${i+1}">
+          ${pers?`<input id="f-v-${p.id}" inputmode="decimal" placeholder="0,00" value="${esc(p._txt)}" data-pi="${i}" data-pf="valor" aria-label="Valor de ${esc(p.nome||"pessoa "+(i+1))}">`:""}
+          <button class="iconbtn" data-act="rmp" data-i="${i}" aria-label="Remover pessoa">✕</button></div>`).join("")}
+        </div>
+        <button class="btn ghost" data-act="addp" style="align-self:flex-start">＋ Adicionar pessoa</button></div>
+      <div class="preview" id="f-preview"></div>
+      <div class="sheet-foot">
+        ${e._new?"<span></span>": e._confirmDel ? `<div class="confirm">Excluir esta conta e o histórico? <button class="btn danger" data-act="del">Excluir</button><button class="btn ghost" data-act="nodel">Cancelar</button></div>` : `<button class="btn danger" data-act="askdel">Excluir</button>`}
+        <button class="btn primary" data-act="save">${e._new?"Cadastrar conta":"Salvar"}</button>
+      </div></div>`;
+    renderPreview();
+  }
+  function validate(){
+    const e=editing; const total=parseCents(e._totalTxt);
+    const pessoas=e.pessoas.filter(p=>p.nome.trim()).map(p=>({id:p.id,nome:p.nome.trim(),valor:e.divisao==="personalizado"?(parseCents(p._txt)||0):null}));
+    const c={id:e.id,nome:e.nome.trim(),total:total||0,dia:Math.min(31,Math.max(1,parseInt(e.dia)||1)),inicio:e.inicio||ym(new Date()),euPago:!!e.euPago,divisao:e.divisao,pessoas,criadaEm:e.criadaEm};
+    let err="";
+    if(!c.nome) err="Dê um nome para a conta.";
+    else if(!total||total<=0) err="Informe o valor total.";
+    else if(!pessoas.length) err="Adicione pelo menos uma pessoa.";
+    else if(c.divisao==="personalizado"){ const s=pessoas.reduce((a,p)=>a+p.valor,0); if(s>c.total) err="A soma das partes passa do total."; }
+    return {c,err};
+  }
+  function renderPreview(){
+    const el=$("f-preview"); if(!el) return;
+    const {c,err}=validate();
+    if(!c.total||!c.pessoas.length){ el.innerHTML=`<span style="color:var(--muted)">Preencha valor e pessoas para ver a parte de cada um.</span>`; return; }
+    const sh=shares(c);
+    el.innerHTML = sh.pessoas.map(p=>`<div><span>${esc(p.nome)}</span><span class="num">${brl(p.valor)}</span></div>`).join("")
+      + `<div><span>${c.euPago?"Minha parte":"Fica comigo"}</span><span class="num">${brl(sh.meu)}</span></div>`
+      + (err&&c.nome?`<div class="err">${esc(err)}</div>`:"");
+  }
+  async function saveForm(){
+    const {c,err}=validate(); if(err){ toast(err); return; }
+    closeOverlay(); S.contas = [...S.contas.filter(x=>x.id!==c.id), c].sort((a,b)=>a.dia-b.dia); render();
+    await write(S.store.saveConta(c)); toast(editing?._new===false?"Conta atualizada":"Conta cadastrada");
+  }
+  function closeOverlay(){ $("overlay").hidden=true; $("overlay").innerHTML=""; }
+
+  // ---------- eventos ----------
+  document.addEventListener("click", (ev)=>{
+    const b=ev.target.closest("[data-act]");
+    if(!b){ if(ev.target.id==="overlay") closeOverlay(); return; }
+    const a=b.dataset.act, d=b.dataset;
+    if(a==="pay") setPaid(d.c,d.m,d.p,true);
+    else if(a==="unpay") setPaid(d.c,d.m,d.p,false);
+    else if(a==="copy") copyCharge(d.c,d.p);
+    else if(a==="new") openForm(null);
+    else if(a==="edit") openForm(S.contas.find(x=>x.id===d.c));
+    else if(a==="close") closeOverlay();
+    else if(a==="mode"){ editing.divisao=d.v; renderForm(); }
+    else if(a==="addp"){ editing.pessoas.push({id:uid(),nome:"",valor:null,_txt:""}); renderForm(); setTimeout(()=>$("f-p-"+editing.pessoas.at(-1).id)?.focus(),20); }
+    else if(a==="rmp"){ editing.pessoas.splice(+d.i,1); renderForm(); }
+    else if(a==="save") saveForm();
+    else if(a==="askdel"){ editing._confirmDel=true; renderForm(); }
+    else if(a==="nodel"){ editing._confirmDel=false; renderForm(); }
+    else if(a==="del"){ const id=editing.id; closeOverlay(); S.contas=S.contas.filter(x=>x.id!==id); render(); write(S.store.deleteConta(id)); toast("Conta excluída"); }
+  });
+  document.addEventListener("input",(ev)=>{
+    if(!editing) return; const t=ev.target;
+    if(t.dataset.f){ const f=t.dataset.f;
+      if(f==="total") editing._totalTxt=t.value; else if(f==="euPago") editing.euPago=t.checked; else editing[f]=t.value; renderPreview(); }
+    else if(t.dataset.pf){ const p=editing.pessoas[+t.dataset.pi]; if(t.dataset.pf==="nome") p.nome=t.value; else p._txt=t.value; renderPreview(); }
+  });
+  document.addEventListener("change",(ev)=>{ if(editing && ev.target.dataset.f==="euPago"){ editing.euPago=ev.target.checked; renderPreview(); } });
+  document.addEventListener("keydown",(ev)=>{ if(ev.key==="Escape" && !$("overlay").hidden) closeOverlay(); });
+  $("prev").onclick=()=>{ S.mes=addM(S.mes,-1); render(); };
+  $("next").onclick=()=>{ S.mes=addM(S.mes,1); render(); };
+  $("fab").onclick=()=>openForm(null);
+
+
+  // ---------- backup ----------
+  $("expBtn").onclick=()=>{
+    const d={app:"racha-contas",versao:1,exportadoEm:new Date().toISOString(),...S.store.dump()};
+    const blob=new Blob([JSON.stringify(d,null,2)],{type:"application/json"});
+    const a=document.createElement("a"); a.href=URL.createObjectURL(blob); a.download="racha-contas-"+ym(new Date())+".json";
+    document.body.appendChild(a); a.click(); a.remove(); setTimeout(()=>URL.revokeObjectURL(a.href),2000);
+    toast("Backup exportado");
+  };
+  $("impBtn").onclick=()=>$("impFile").click();
+  $("impFile").onchange=async(ev)=>{
+    const f=ev.target.files[0]; ev.target.value=""; if(!f) return;
+    try{ const d=JSON.parse(await f.text()); if(!d.contas) throw 0;
+      if(!window.confirm("Substituir os dados deste celular pelo backup?")) return;
+      S.store.load(d); toast("Backup importado"); }
+    catch(e){ toast("Arquivo inválido. Use um backup exportado pelo Racha Contas."); }
+  };
+
+  // ---------- notificações ----------
+  const canNotify = "Notification" in window && "serviceWorker" in navigator;
+  function updNotifBtn(){
+    const b=$("notifBtn");
+    if(!canNotify){ b.hidden=true; return; }
+    if(Notification.permission==="granted"){ b.textContent="Notificações ativadas"; b.disabled=true; }
+    else if(Notification.permission==="denied"){ b.textContent="Notificações bloqueadas"; b.disabled=true; }
+  }
+  $("notifBtn").onclick=async()=>{
+    if(!canNotify) return;
+    const r=await Notification.requestPermission(); updNotifBtn();
+    if(r==="granted"){ try{localStorage.removeItem("rc-ultimo-aviso");}catch(e){} maybeNotify(); }
+  };
+  async function maybeNotify(){
+    if(!canNotify || Notification.permission!=="granted" || !S.ready) return;
+    const al=computeAlerts(); if(!al.length) return;
+    const hoje=new Date().toDateString();
+    try{ if(localStorage.getItem("rc-ultimo-aviso")===hoje) return; localStorage.setItem("rc-ultimo-aviso",hoje); }catch(e){}
+    const n=al.reduce((s,a)=>s+a.pessoas.length,0);
+    const body=al.slice(0,4).map(a=>a.c.nome+": "+a.pessoas.map(p=>p.nome).join(", ")+" ("+a.msg.toLowerCase()+")").join("\n");
+    try{ const reg=await navigator.serviceWorker.ready;
+      reg.showNotification(n+(n>1?" cotas pendentes":" cota pendente"),{body,icon:"icon-192.png",badge:"icon-192.png",tag:"racha-contas"}); }catch(e){}
+  }
+  updNotifBtn();
+  if("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(()=>{});
+  document.addEventListener("visibilitychange",()=>{ if(!document.hidden) render(); });
+
+  let tt; function toast(msg){ const t=$("toast"); t.textContent=msg; t.hidden=false; clearTimeout(tt); tt=setTimeout(()=>t.hidden=true,2600); }
+
+  render();
+})();
+</script>
+</body>
+</html>
