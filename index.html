@@ -156,6 +156,12 @@ input[type=text],input[type=number],input[type=month],input[inputmode]{font:inhe
 .btn.danger{color:var(--bad);background:var(--bad-soft)}
 .confirm{display:flex;gap:8px;align-items:center;flex-wrap:wrap;font-size:14px}
 
+.card-foot{display:flex;gap:8px;align-items:center;justify-content:space-between;flex-wrap:wrap;padding:10px 16px;border-top:1px solid var(--line);background:var(--bg)}
+.btn.sm{min-height:32px;padding:6px 10px;font-size:13px}
+.link{color:var(--accent);font-weight:700;font-size:13px;padding:4px 0;text-decoration:underline;text-underline-offset:3px}
+.total .pill{margin-top:4px}
+.muted-inline{font-weight:400;color:var(--muted)}
+.fake{padding:10px 12px;border-radius:10px;border:1px dashed var(--line);color:var(--muted);font-size:14px}
 .toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(env(safe-area-inset-bottom, 0px) + 86px);background:var(--ink);color:var(--bg);padding:10px 16px;border-radius:10px;font-weight:700;font-size:14px;z-index:30;max-width:calc(100% - 32px)}
 @media (prefers-reduced-motion: reduce){*{transition:none!important}}
 .tools{display:flex;flex-wrap:wrap;gap:8px}
@@ -226,24 +232,44 @@ input[type=text],input[type=number],input[type=month],input[inputmode]{font:inhe
 
   // ---------- estado ----------
   const S = { contas: [], pags: {}, ready: false, mes: ym(new Date()), store: null };
+  const canNotify = "Notification" in window && "serviceWorker" in navigator;
   let editing = null; // rascunho de conta em edição
 
-  function shares(c){
-    const ps = c.pessoas || [];
-    if (c.divisao === "personalizado"){
-      const list = ps.map(p => ({id:p.id, nome:p.nome, valor:p.valor||0}));
-      const soma = list.reduce((a,p)=>a+p.valor,0);
-      return { pessoas:list, meu: c.total - soma };
+  // Configuração válida num mês: base da conta, substituída pelas versões com "desde" <= mês.
+  function cfg(c,m){
+    let v = {total:c.total, divisao:c.divisao, euPago:c.euPago, pessoas:c.pessoas||[]};
+    if (m) for (const x of (c.versoes||[]).slice().sort((a,b)=>a.desde.localeCompare(b.desde))) if (x.desde<=m) v = x;
+    let total = v.total, estimado = false, ajustado = false;
+    const pm = c.porMes || {};
+    if (m && pm[m] != null){ total = pm[m]; ajustado = true; }
+    else if (m && c.variavel){
+      const prev = Object.keys(pm).filter(k=>k<m).sort().pop();
+      if (prev) total = pm[prev];
+      estimado = true;
     }
+    return {...v, total, estimado, ajustado, base:v.total};
+  }
+  function shares(c,m){
+    const k = cfg(c,m), ps = k.pessoas || [];
+    if (k.divisao === "personalizado"){
+      // valores por pessoa acompanham o total do mês na mesma proporção
+      const f = k.base ? k.total / k.base : 1;
+      let list = ps.map(p => ({id:p.id, nome:p.nome, valor:Math.round((p.valor||0)*f)}));
+      const soma = list.reduce((a,p)=>a+p.valor,0);
+      return { pessoas:list, meu: k.total - soma, total:k.total, estimado:k.estimado, ajustado:k.ajustado };
+    }
+    c = {total:k.total, euPago:k.euPago};
     const n = ps.length + (c.euPago ? 1 : 0);
-    if (!n) return { pessoas:[], meu:c.total };
+    if (!n) return { pessoas:[], meu:c.total, total:k.total, estimado:k.estimado, ajustado:k.ajustado };
     const base = Math.floor(c.total / n), rem = c.total - base*n;
     const list = ps.map((p,i) => ({id:p.id, nome:p.nome, valor: base + (i<rem?1:0)}));
-    return { pessoas:list, meu: c.euPago ? base : 0 };
+    return { pessoas:list, meu: c.euPago ? base : 0, total:k.total, estimado:k.estimado, ajustado:k.ajustado };
   }
   const pagKey = (cid,m) => cid+"_"+m;
   const recebido = (cid,m,pid) => S.pags[pagKey(cid,m)]?.recebidos?.[pid] || null;
-  const ativaEm = (c,m) => m >= (c.inicio || "0000-00");
+  const fimDe = (c) => c.repetir==="parcelas" && c.parcelas>0 ? addM(c.inicio, c.parcelas-1) : null;
+  const ativaEm = (c,m) => m >= (c.inicio || "0000-00") && (!fimDe(c) || m <= fimDe(c));
+  const parcelaN = (c,m) => { const [y1,m1]=c.inicio.split("-").map(Number), [y2,m2]=m.split("-").map(Number); return (y2-y1)*12+(m2-m1)+1; };
 
   // ---------- armazenamento (db da conta, ou este navegador) ----------
   function localStore(){
@@ -276,9 +302,9 @@ input[type=text],input[type=number],input[type=month],input[inputmode]{font:inhe
   function computeAlerts(){
     const out=[], now=today(), cur=ym(now);
     for (const c of S.contas){
-      const sh = shares(c);
       for (let k=12; k>=0; k--){
         const m = addM(cur,-k); if(!ativaEm(c,m)) continue;
+        const sh = shares(c,m);
         const due = dueDate(m,c.dia), diff = dayDiff(due,now);
         for (const p of sh.pessoas){
           if (recebido(c.id,m,p.id)) continue;
@@ -304,7 +330,7 @@ input[type=text],input[type=number],input[type=month],input[inputmode]{font:inhe
     // resumo
     let tot=0, paid=0, pend=0;
     for (const c of S.contas){ if(!ativaEm(c,S.mes)) continue;
-      for (const p of shares(c).pessoas){ tot+=p.valor; if(recebido(c.id,S.mes,p.id)) paid+=p.valor; else pend++; } }
+      for (const p of shares(c,S.mes).pessoas){ tot+=p.valor; if(recebido(c.id,S.mes,p.id)) paid+=p.valor; else pend++; } }
     $("sumTotal").textContent = brl(tot); $("sumPaid").textContent = brl(paid);
     $("sumBar").style.width = tot ? Math.round(paid/tot*100)+"%" : "0%";
     $("sumNote").textContent = !S.ready ? "Carregando suas contas…" : !tot ? "Nenhuma cota para receber neste mês." : pend ? pend+(pend===1?" cota ainda falta":" cotas ainda faltam")+" em "+monthName(S.mes).toLowerCase()+"." : "Tudo recebido em "+monthName(S.mes).toLowerCase()+".";
@@ -337,7 +363,7 @@ input[type=text],input[type=number],input[type=month],input[inputmode]{font:inhe
   }
 
   function cardHTML(c){
-    const sh = shares(c), m=S.mes, due=dueDate(m,c.dia), diff=dayDiff(due,today());
+    const m=S.mes, sh = shares(c,m), due=dueDate(m,c.dia), diff=dayDiff(due,today());
     const rows = sh.pessoas.map(p=>{
       const r = recebido(c.id,m,p.id);
       let status="";
@@ -352,20 +378,59 @@ input[type=text],input[type=number],input[type=month],input[inputmode]{font:inhe
     const me = (c.euPago || sh.meu>0) ? `<div class="row me"><div class="who"><b>Minha parte</b><span class="num">${brl(Math.max(sh.meu,0))}</span></div></div>` : "";
     // histórico de 6 meses
     const cells=[]; for(let k=5;k>=0;k--){ const mm=addM(m,-k); let cls="";
-      if (ativaEm(c,mm) && sh.pessoas.length){ const n=sh.pessoas.filter(p=>recebido(c.id,mm,p.id)).length;
+      const shm = ativaEm(c,mm) ? shares(c,mm) : null;
+      if (shm && shm.pessoas.length){ const n=shm.pessoas.filter(p=>recebido(c.id,mm,p.id)).length;
         const past = dueDate(mm,c.dia) < today();
-        cls = n===sh.pessoas.length ? "full" : n>0 ? "part" : past ? "none" : ""; }
+        cls = n===shm.pessoas.length ? "full" : n>0 ? "part" : past ? "none" : ""; }
       else if(!ativaEm(c,mm)) cls="off";
       cells.push(`<div class="hcell ${mm===m?"sel":""}" ${cls==="off"?'style="opacity:.35"':""}><i class="${cls}"></i>${monthName(mm,true)}</div>`); }
     return `<article class="card">
       <div class="card-head">
-        <div style="min-width:0"><h3>${esc(c.nome)}</h3><div class="meta">Vence dia ${c.dia} · ${sh.pessoas.length+(c.euPago?1:0)} pessoas · ${c.divisao==="personalizado"?"valores personalizados":"divisão igual"}</div></div>
-        <div style="display:flex;gap:4px;align-items:flex-start"><div class="total"><div class="label">Total</div><div class="num">${brl(c.total)}</div></div>
+        <div style="min-width:0"><h3>${esc(c.nome)}</h3><div class="meta">${recLabel(c,m)} · vence dia ${c.dia} · ${sh.pessoas.length+(cfg(c,m).euPago?1:0)} pessoas</div></div>
+        <div style="display:flex;gap:4px;align-items:flex-start"><div class="total"><div class="label">${sh.estimado?"Estimado":"Total"}</div><div class="num">${brl(sh.total)}</div>${sh.ajustado&&!c.variavel?`<span class="pill warn">só este mês</span>`:""}</div>
         <button class="iconbtn" data-act="edit" data-c="${c.id}" aria-label="Editar ${esc(c.nome)}">✎</button></div>
       </div>
       <div class="rows">${rows}${me}</div>
       <div class="history"><span class="label">Últimos meses</span>${cells.join("")}</div>
+      <div class="card-foot">${ c.variavel
+        ? (sh.estimado
+            ? `<span class="pill warn">valor estimado</span><button class="btn ghost sm" data-act="valmes" data-c="${c.id}">Informar valor de ${monthName(m,true)}</button>`
+            : `<span class="pill ok">valor de ${monthName(m,true)} informado</span><button class="btn ghost sm" data-act="valmes" data-c="${c.id}">Alterar</button>`)
+        : `<button class="link" data-act="valmes" data-c="${c.id}">${sh.ajustado?"Alterar valor deste mês":"Valor diferente só neste mês?"}</button>` }</div>
     </article>`;
+  }
+
+  function recLabel(c,m){
+    if (c.repetir==="parcelas" && c.parcelas>0) return `Parcela ${parcelaN(c,m)} de ${c.parcelas}`;
+    return c.variavel ? "Todo mês · valor variável" : "Todo mês";
+  }
+
+  // ---------- valor de um mês ----------
+  let valMes = null;
+  function openValMes(cid){
+    const c=S.contas.find(x=>x.id===cid); if(!c) return;
+    const sh=shares(c,S.mes);
+    valMes={cid, m:S.mes};
+    $("overlay").hidden=false;
+    $("overlay").innerHTML=`<div class="sheet" role="dialog" aria-modal="true" aria-labelledby="vm-title">
+      <div class="sheet-head"><h2 id="vm-title">${esc(c.nome)}: ${monthName(S.mes).toLowerCase()}</h2><button class="iconbtn" data-act="close" aria-label="Fechar">✕</button></div>
+      <p style="margin:0;color:var(--muted)">${c.variavel?"Informe o valor que chegou na conta deste mês. A divisão é recalculada só para este mês, e o próximo mês usa este valor como estimativa.":"Use quando a conta deste mês veio diferente. Os outros meses continuam com o valor normal."}</p>
+      <div class="field"><label for="vm-val">Valor total de ${monthName(S.mes).toLowerCase()} (R$)</label><input id="vm-val" inputmode="decimal" value="${centsToInput(sh.total)}"></div>
+      <div class="preview" id="vm-prev"></div>
+      <div class="sheet-foot">${sh.ajustado?`<button class="btn ghost" data-act="vmclear">Voltar ao valor normal</button>`:"<span></span>"}<button class="btn primary" data-act="vmsave">Salvar valor do mês</button></div>
+    </div>`;
+    const upd=()=>{ const v=parseCents($("vm-val").value); const tmp={...c, porMes:{...(c.porMes||{}), [S.mes]: v||0}};
+      const s2=shares(tmp,S.mes); $("vm-prev").innerHTML = v ? s2.pessoas.map(p=>`<div><span>${esc(p.nome)}</span><span class="num">${brl(p.valor)}</span></div>`).join("")+`<div><span>Minha parte</span><span class="num">${brl(Math.max(s2.meu,0))}</span></div>` : `<span style="color:var(--muted)">Digite o valor.</span>`; };
+    $("vm-val").addEventListener("input",upd); upd(); setTimeout(()=>{ $("vm-val").focus(); $("vm-val").select(); },30);
+  }
+  function saveValMes(clear){
+    const c=S.contas.find(x=>x.id===valMes.cid); if(!c) return;
+    const pm={...(c.porMes||{})};
+    if(clear) delete pm[valMes.m];
+    else { const v=parseCents($("vm-val").value); if(!v||v<=0){ toast("Informe um valor maior que zero."); return; } pm[valMes.m]=v; }
+    const nc={...c, porMes:pm}; closeOverlay();
+    S.contas=S.contas.map(x=>x.id===nc.id?nc:x); render(); write(S.store.saveConta(nc));
+    toast(clear?"Valor normal restaurado":"Valor de "+monthName(valMes.m).toLowerCase()+" salvo");
   }
 
   // ---------- ações ----------
@@ -373,7 +438,7 @@ input[type=text],input[type=number],input[type=month],input[inputmode]{font:inhe
     const c=S.contas.find(x=>x.id===cid); if(!c) return;
     const cur = S.pags[pagKey(cid,m)] || {contaId:cid, mes:m, recebidos:{}};
     const rec = {...(cur.recebidos||{})};
-    if(on){ const p=shares(c).pessoas.find(x=>x.id===pid); rec[pid]={em:new Date().toISOString(), valor:p?p.valor:0}; }
+    if(on){ const p=shares(c,m).pessoas.find(x=>x.id===pid); rec[pid]={em:new Date().toISOString(), valor:p?p.valor:0}; }
     else delete rec[pid];
     const doc={contaId:cid, mes:m, recebidos:rec};
     S.pags[pagKey(cid,m)]=doc; render();
@@ -381,8 +446,8 @@ input[type=text],input[type=number],input[type=month],input[inputmode]{font:inhe
     if(on){ const p=c.pessoas.find(x=>x.id===pid); toast("Recebimento de "+(p?.nome||"")+" confirmado"); }
   }
   async function copyCharge(cid,pid){
-    const c=S.contas.find(x=>x.id===cid); const p=shares(c).pessoas.find(x=>x.id===pid); if(!p) return;
-    const txt=`Oi, ${p.nome}! Sua parte de ${c.nome} em ${monthName(S.mes).toLowerCase()} é ${brl(p.valor)} (vence dia ${c.dia}).`;
+    const c=S.contas.find(x=>x.id===cid); const p=shares(c,S.mes).pessoas.find(x=>x.id===pid); if(!p) return;
+    const txt=`Oi, ${p.nome}! Sua parte de ${c.nome} em ${monthName(S.mes).toLowerCase()} é ${brl(p.valor)} (vence dia ${c.dia})${shares(c,S.mes).estimado?" Valor estimado, confirmo quando a conta chegar.":""}`;
     try{ await navigator.clipboard.writeText(txt); toast("Mensagem copiada. Cole no WhatsApp."); }
     catch(e){ showCopyFallback(txt); }
   }
@@ -394,7 +459,14 @@ input[type=text],input[type=number],input[type=month],input[inputmode]{font:inhe
 
   // ---------- formulário ----------
   function openForm(c){
-    editing = c ? JSON.parse(JSON.stringify(c)) : {id:uid(), nome:"", total:null, dia:10, inicio:ym(new Date()), euPago:true, divisao:"igual", pessoas:[{id:uid(),nome:"",valor:null}], criadaEm:new Date().toISOString(), _new:true};
+    if (c && !c._dup){
+      const k = cfg(c,S.mes); // abre com a configuração do mês que está na tela
+      editing = JSON.parse(JSON.stringify({...c, total:k.base, divisao:k.divisao, euPago:k.euPago, pessoas:k.pessoas}));
+      editing._orig = JSON.parse(JSON.stringify(c));
+      editing._desde = S.mes > c.inicio ? S.mes : c.inicio;
+    } else editing = c ? JSON.parse(JSON.stringify(c)) : {id:uid(), nome:"", total:null, dia:10, inicio:S.mes, euPago:true, divisao:"igual", pessoas:[{id:uid(),nome:"",valor:null}], criadaEm:new Date().toISOString(), _new:true};
+    editing.repetir = editing.repetir || "sempre";
+    editing._parcTxt = editing.parcelas ? String(editing.parcelas) : "";
     editing._totalTxt = centsToInput(editing.total);
     editing.pessoas.forEach(p=>p._txt=centsToInput(p.valor));
     editing._confirmDel=false;
@@ -409,7 +481,15 @@ input[type=text],input[type=number],input[type=month],input[inputmode]{font:inhe
         <div class="field"><label for="f-total">Valor total (R$)</label><input id="f-total" inputmode="decimal" placeholder="50,00" value="${esc(e._totalTxt)}" data-f="total"></div>
         <div class="field"><label for="f-dia">Dia do vencimento</label><input id="f-dia" type="number" min="1" max="31" value="${e.dia}" data-f="dia"></div>
       </div>
-      <div class="field"><label for="f-inicio">Acompanhar a partir de</label><input id="f-inicio" type="month" value="${e.inicio}" data-f="inicio"></div>
+      <label class="check"><input id="f-var" type="checkbox" ${e.variavel?"checked":""} data-f="variavel"> O valor muda todo mês <span class="muted-inline">(luz, água, gás)</span></label>
+      ${e.variavel?`<p class="small" style="margin:-8px 0 0">O valor acima vira a estimativa. Em cada mês você informa o valor que chegou, e a divisão é recalculada.</p>`:""}
+      <div class="field"><span class="label">Repetir</span>
+        <div class="seg"><button data-act="rep" data-v="sempre" aria-pressed="${e.repetir!=="parcelas"}">Todo mês</button><button data-act="rep" data-v="parcelas" aria-pressed="${e.repetir==="parcelas"}">Por alguns meses</button></div></div>
+      <div class="grid2">
+        <div class="field"><label for="f-inicio">Começa em</label><input id="f-inicio" type="month" value="${e.inicio}" data-f="inicio"></div>
+        ${e.repetir==="parcelas"?`<div class="field"><label for="f-parc">Quantos meses</label><input id="f-parc" type="number" min="1" max="120" placeholder="12" value="${esc(e._parcTxt)}" data-f="_parcTxt"></div>`:`<div class="field"><span class="label">Até</span><div class="fake">Sem data para acabar</div></div>`}
+      </div>
+      <p class="small" id="f-rec" style="margin:-8px 0 0"></p>
       <label class="check"><input id="f-eu" type="checkbox" ${e.euPago?"checked":""} data-f="euPago"> Eu também pago uma parte</label>
       <div class="field"><span class="label">Como dividir</span>
         <div class="seg"><button data-act="mode" data-v="igual" aria-pressed="${!pers}">Partes iguais</button><button data-act="mode" data-v="personalizado" aria-pressed="${pers}">Valor por pessoa</button></div></div>
@@ -421,8 +501,9 @@ input[type=text],input[type=number],input[type=month],input[inputmode]{font:inhe
         </div>
         <button class="btn ghost" data-act="addp" style="align-self:flex-start">＋ Adicionar pessoa</button></div>
       <div class="preview" id="f-preview"></div>
+      ${!e._new?`<div class="field"><label for="f-desde">Mudanças de valor ou pessoas valem a partir de</label><input id="f-desde" type="month" value="${e._desde}" min="${e.inicio}" data-f="_desde"><span class="small" style="margin:0">Os meses anteriores continuam como estavam.</span></div>`:""}
       <div class="sheet-foot">
-        ${e._new?"<span></span>": e._confirmDel ? `<div class="confirm">Excluir esta conta e o histórico? <button class="btn danger" data-act="del">Excluir</button><button class="btn ghost" data-act="nodel">Cancelar</button></div>` : `<button class="btn danger" data-act="askdel">Excluir</button>`}
+        ${e._new?"<span></span>": e._confirmDel ? `<div class="confirm">Excluir esta conta e o histórico? <button class="btn danger" data-act="del">Excluir</button><button class="btn ghost" data-act="nodel">Cancelar</button></div>` : `<div class="confirm"><button class="btn danger" data-act="askdel">Excluir</button><button class="btn ghost" data-act="dup">Duplicar</button></div>`}
         <button class="btn primary" data-act="save">${e._new?"Cadastrar conta":"Salvar"}</button>
       </div></div>`;
     renderPreview();
@@ -430,17 +511,24 @@ input[type=text],input[type=number],input[type=month],input[inputmode]{font:inhe
   function validate(){
     const e=editing; const total=parseCents(e._totalTxt);
     const pessoas=e.pessoas.filter(p=>p.nome.trim()).map(p=>({id:p.id,nome:p.nome.trim(),valor:e.divisao==="personalizado"?(parseCents(p._txt)||0):null}));
-    const c={id:e.id,nome:e.nome.trim(),total:total||0,dia:Math.min(31,Math.max(1,parseInt(e.dia)||1)),inicio:e.inicio||ym(new Date()),euPago:!!e.euPago,divisao:e.divisao,pessoas,criadaEm:e.criadaEm};
+    const parcelas = e.repetir==="parcelas" ? parseInt(e._parcTxt)||0 : 0;
+    const c={id:e.id,nome:e.nome.trim(),total:total||0,dia:Math.min(31,Math.max(1,parseInt(e.dia)||1)),inicio:e.inicio||ym(new Date()),euPago:!!e.euPago,divisao:e.divisao,pessoas,criadaEm:e.criadaEm,
+      variavel:!!e.variavel, repetir:e.repetir||"sempre", parcelas, porMes:e.porMes||{}, versoes:e.versoes||[]};
     let err="";
     if(!c.nome) err="Dê um nome para a conta.";
     else if(!total||total<=0) err="Informe o valor total.";
     else if(!pessoas.length) err="Adicione pelo menos uma pessoa.";
     else if(c.divisao==="personalizado"){ const s=pessoas.reduce((a,p)=>a+p.valor,0); if(s>c.total) err="A soma das partes passa do total."; }
+    else if(c.repetir==="parcelas" && (!parcelas || parcelas<1)) err="Informe por quantos meses a conta se repete.";
     return {c,err};
   }
   function renderPreview(){
     const el=$("f-preview"); if(!el) return;
     const {c,err}=validate();
+    const rec=$("f-rec");
+    if(rec){ const ini=monthName(c.inicio).toLowerCase();
+      rec.textContent = c.repetir==="parcelas" ? (c.parcelas>0 ? `Aparece de ${ini} até ${monthName(addM(c.inicio,c.parcelas-1)).toLowerCase()}, ${c.parcelas} ${c.parcelas>1?"meses":"mês"}.` : "")
+        : `Aparece automaticamente todo mês a partir de ${ini}. Não precisa cadastrar de novo.`; }
     if(!c.total||!c.pessoas.length){ el.innerHTML=`<span style="color:var(--muted)">Preencha valor e pessoas para ver a parte de cada um.</span>`; return; }
     const sh=shares(c);
     el.innerHTML = sh.pessoas.map(p=>`<div><span>${esc(p.nome)}</span><span class="num">${brl(p.valor)}</span></div>`).join("")
@@ -448,9 +536,24 @@ input[type=text],input[type=number],input[type=month],input[inputmode]{font:inhe
       + (err&&c.nome?`<div class="err">${esc(err)}</div>`:"");
   }
   async function saveForm(){
-    const {c,err}=validate(); if(err){ toast(err); return; }
+    let {c,err}=validate(); if(err){ toast(err); return; }
+    const o = editing._orig;
+    if (o){
+      // mudanças de dinheiro/pessoas valem a partir do mês escolhido; antes disso fica como estava
+      const desde = editing._desde && editing._desde > c.inicio ? editing._desde : c.inicio;
+      const novo = {total:c.total, divisao:c.divisao, euPago:c.euPago, pessoas:c.pessoas};
+      const antes = cfg(o, desde);
+      const mudou = JSON.stringify([antes.base,antes.divisao,antes.euPago,antes.pessoas]) !== JSON.stringify([novo.total,novo.divisao,novo.euPago,novo.pessoas]);
+      if (!mudou || desde <= c.inicio){
+        const vers = mudou ? [] : (o.versoes||[]);
+        c = {...c, ...(mudou ? novo : {total:o.total, divisao:o.divisao, euPago:o.euPago, pessoas:o.pessoas}), versoes:vers};
+      } else {
+        const vers = (o.versoes||[]).filter(v=>v.desde<desde).concat([{desde, ...novo}]);
+        c = {...c, total:o.total, divisao:o.divisao, euPago:o.euPago, pessoas:o.pessoas, versoes:vers};
+      }
+    }
     closeOverlay(); S.contas = [...S.contas.filter(x=>x.id!==c.id), c].sort((a,b)=>a.dia-b.dia); render();
-    await write(S.store.saveConta(c)); toast(editing?._new===false?"Conta atualizada":"Conta cadastrada");
+    await write(S.store.saveConta(c)); toast(o?"Conta atualizada":"Conta cadastrada");
   }
   function closeOverlay(){ $("overlay").hidden=true; $("overlay").innerHTML=""; }
 
@@ -466,6 +569,14 @@ input[type=text],input[type=number],input[type=month],input[inputmode]{font:inhe
     else if(a==="edit") openForm(S.contas.find(x=>x.id===d.c));
     else if(a==="close") closeOverlay();
     else if(a==="mode"){ editing.divisao=d.v; renderForm(); }
+    else if(a==="rep"){ editing.repetir=d.v; renderForm(); }
+    else if(a==="valmes") openValMes(d.c);
+    else if(a==="vmsave") saveValMes(false);
+    else if(a==="vmclear") saveValMes(true);
+    else if(a==="dup"){ const src=editing._orig||editing; const k=cfg(src,S.mes);
+      const copia={...JSON.parse(JSON.stringify(src)), id:uid(), nome:src.nome+" (cópia)", total:k.base, divisao:k.divisao, euPago:k.euPago,
+        pessoas:k.pessoas.map(p=>({...p,id:uid()})), porMes:{}, versoes:[], inicio:S.mes, criadaEm:new Date().toISOString(), _new:true, _dup:true};
+      closeOverlay(); openForm(copia); }
     else if(a==="addp"){ editing.pessoas.push({id:uid(),nome:"",valor:null,_txt:""}); renderForm(); setTimeout(()=>$("f-p-"+editing.pessoas.at(-1).id)?.focus(),20); }
     else if(a==="rmp"){ editing.pessoas.splice(+d.i,1); renderForm(); }
     else if(a==="save") saveForm();
@@ -476,7 +587,9 @@ input[type=text],input[type=number],input[type=month],input[inputmode]{font:inhe
   document.addEventListener("input",(ev)=>{
     if(!editing) return; const t=ev.target;
     if(t.dataset.f){ const f=t.dataset.f;
-      if(f==="total") editing._totalTxt=t.value; else if(f==="euPago") editing.euPago=t.checked; else editing[f]=t.value; renderPreview(); }
+      if(f==="total") editing._totalTxt=t.value; else if(f==="euPago") editing.euPago=t.checked;
+      else if(f==="variavel"){ editing.variavel=t.checked; renderForm(); return; }
+      else editing[f]=t.value; renderPreview(); }
     else if(t.dataset.pf){ const p=editing.pessoas[+t.dataset.pi]; if(t.dataset.pf==="nome") p.nome=t.value; else p._txt=t.value; renderPreview(); }
   });
   document.addEventListener("change",(ev)=>{ if(editing && ev.target.dataset.f==="euPago"){ editing.euPago=ev.target.checked; renderPreview(); } });
@@ -504,7 +617,6 @@ input[type=text],input[type=number],input[type=month],input[inputmode]{font:inhe
   };
 
   // ---------- notificações ----------
-  const canNotify = "Notification" in window && "serviceWorker" in navigator;
   function updNotifBtn(){
     const b=$("notifBtn");
     if(!canNotify){ b.hidden=true; return; }
