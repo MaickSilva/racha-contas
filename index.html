@@ -162,6 +162,19 @@ input[type=text],input[type=number],input[type=month],input[inputmode]{font:inhe
 .total .pill{margin-top:4px}
 .muted-inline{font-weight:400;color:var(--muted)}
 .fake{padding:10px 12px;border-radius:10px;border:1px dashed var(--line);color:var(--muted);font-size:14px}
+.dup{display:flex;flex-direction:column;gap:10px;background:var(--accent-soft);border:1px solid var(--line);border-radius:12px;padding:12px 14px}
+.dup .txt b{display:block}.dup .txt small{color:var(--muted);font-size:13px}
+.dup .actions{justify-content:flex-start}
+.pick{display:flex;flex-direction:column;gap:6px;max-height:280px;overflow-y:auto}
+.pickrow{display:flex;gap:12px;align-items:center;padding:10px 12px;border:1px solid var(--line);border-radius:10px;cursor:pointer}
+.pickrow.on{border-color:var(--accent);background:var(--accent-soft)}
+.pickrow input{width:20px;height:20px;accent-color:var(--accent);flex:none}
+.pickrow .who{min-width:0}.pickrow b{display:block;overflow-wrap:anywhere}.pickrow small{color:var(--muted);font-size:13px}
+select{font:inherit;width:100%;padding:10px 12px;border-radius:10px;border:1px solid var(--line);background:var(--bg);color:var(--ink)}
+.mgprev b{font-weight:700}
+.btn[disabled]{opacity:.45;cursor:not-allowed}
+.undo{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(env(safe-area-inset-bottom, 0px) + 86px);background:var(--ink);color:var(--bg);padding:8px 8px 8px 16px;border-radius:12px;font-weight:700;font-size:14px;z-index:31;display:flex;gap:12px;align-items:center;max-width:calc(100% - 32px)}
+.undo button{color:var(--accent-soft);font-weight:700;padding:8px 10px;border-radius:8px;text-decoration:underline}
 .toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(env(safe-area-inset-bottom, 0px) + 86px);background:var(--ink);color:var(--bg);padding:10px 16px;border-radius:10px;font-weight:700;font-size:14px;z-index:30;max-width:calc(100% - 32px)}
 @media (prefers-reduced-motion: reduce){*{transition:none!important}}
 .tools{display:flex;flex-wrap:wrap;gap:8px}
@@ -194,7 +207,9 @@ input[type=text],input[type=number],input[type=month],input[inputmode]{font:inhe
   </section>
   <section>
     <div class="section-head"><h2>Contas</h2><span class="label" id="contaCount"></span></div>
+    <div id="dupBanner" style="margin-top:10px" hidden></div>
     <div class="list" id="list" style="margin-top:10px"></div>
+    <button class="link" id="mergeBtn" style="margin-top:12px" hidden>Juntar contas repetidas</button>
   </section>
   <section>
     <div class="section-head"><h2>Backup e notificações</h2></div>
@@ -210,6 +225,7 @@ input[type=text],input[type=number],input[type=month],input[inputmode]{font:inhe
 <button class="fab" id="fab">＋ Nova conta</button>
 <div class="overlay" id="overlay" hidden></div>
 <div class="toast" id="toast" hidden></div>
+<div class="undo" id="undo" hidden><span id="undoTxt"></span><button id="undoBtn">Desfazer</button></div>
 
 <script>
 (() => {
@@ -284,7 +300,8 @@ input[type=text],input[type=number],input[type=month],input[inputmode]{font:inhe
       subscribe(f){ cb=f; f(data); },
       saveConta(c){ data.contas[c.id]=c; save(); return Promise.resolve(); },
       deleteConta(id){ delete data.contas[id]; save(); return Promise.resolve(); },
-      savePag(p){ data.pags[pagKey(p.contaId,p.mes)]=p; save(); return Promise.resolve(); }
+      savePag(p){ data.pags[pagKey(p.contaId,p.mes)]=p; save(); return Promise.resolve(); },
+      replaceAll(d){ data={contas:d.contas||{},pags:d.pags||{}}; save(); return Promise.resolve(); }
     };
   }
   function attach(store){
@@ -353,6 +370,7 @@ input[type=text],input[type=number],input[type=month],input[inputmode]{font:inhe
     // contas
     const vis = S.contas.filter(c=>ativaEm(c,S.mes));
     $("contaCount").textContent = S.contas.length ? vis.length+" neste mês" : "";
+    $("mergeBtn").hidden = S.contas.length < 2;
     if (!S.ready){ $("list").innerHTML = ""; return; }
     if (!S.contas.length){
       $("list").innerHTML = `<div class="empty"><h3>Nenhuma conta cadastrada</h3><p>Cadastre uma conta que você paga e divide, diga com quem, e o app calcula a parte de cada um e acompanha mês a mês quem já te pagou.</p><button class="btn primary" data-act="new">Cadastrar primeira conta</button></div>`;
@@ -360,6 +378,7 @@ input[type=text],input[type=number],input[type=month],input[inputmode]{font:inhe
     }
     if (!vis.length){ $("list").innerHTML = `<div class="empty"><p>Nenhuma conta começa antes de ${esc(monthName(S.mes).toLowerCase())}.</p></div>`; return; }
     $("list").innerHTML = vis.map(cardHTML).join("");
+    renderDupBanner();
   }
 
   function cardHTML(c){
@@ -404,6 +423,129 @@ input[type=text],input[type=number],input[type=month],input[inputmode]{font:inhe
     if (c.repetir==="parcelas" && c.parcelas>0) return `Parcela ${parcelaN(c,m)} de ${c.parcelas}`;
     return c.variavel ? "Todo mês · valor variável" : "Todo mês";
   }
+
+
+  // ---------- juntar contas repetidas ----------
+  function normNome(n){ const MESES = "janeiro|fevereiro|marco|abril|maio|junho|julho|agosto|setembro|outubro|novembro|dezembro|jan|fev|mar|abr|mai|jun|jul|ago|set|out|nov|dez";
+    return String(n||"").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g,"")
+    .replace(new RegExp("\\b("+MESES+")\\b","g")," ").replace(/\b(de|do|da|mes)\b/g," ").replace(/[\d\/\-_.()]+/g," ").replace(/\s+/g," ").trim(); }
+  const normPessoa = (n) => String(n||"").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g,"").replace(/\s+/g," ").trim();
+  function dupGroups(){
+    const g = {};
+    for (const c of S.contas){ const k = normNome(c.nome); if(!k) continue; (g[k] ||= []).push(c); }
+    return Object.values(g).filter(x=>x.length>1);
+  }
+  function renderDupBanner(){
+    const el=$("dupBanner"); const gs = S.ready ? dupGroups() : [];
+    let ign=[]; try{ ign=JSON.parse(localStorage.getItem("rc-dup-ignorar")||"[]"); }catch(e){}
+    const show = gs.filter(g=>!ign.includes(g.map(c=>c.id).sort().join(",")));
+    el.hidden = !show.length;
+    el.innerHTML = show.map(g=>`<div class="dup">
+      <div class="txt"><b>“${esc(g.map(c=>c.nome.trim()).sort((a,b)=>a.length-b.length)[0])}” parece estar cadastrada ${g.length} vezes</b><small>Juntando, ela vira uma conta só que se repete todo mês, com todos os pagamentos.</small></div>
+      <div class="actions"><button class="btn ghost sm" data-act="dupignore" data-ids="${g.map(c=>c.id).join(",")}">Não são iguais</button><button class="btn primary sm" data-act="merge" data-ids="${g.map(c=>c.id).join(",")}">Revisar e juntar</button></div>
+    </div>`).join("");
+  }
+
+  let mg = null;
+  function openMerge(ids){
+    const sel = new Set(ids||[]);
+    const sorted = S.contas.slice().sort((a,b)=>normNome(a.nome).localeCompare(normNome(b.nome)) || a.inicio.localeCompare(b.inicio));
+    const chosen = sorted.filter(c=>sel.has(c.id));
+    const principal = chosen.length ? chosen.slice().sort((a,b)=>b.inicio.localeCompare(a.inicio))[0].id : null;
+    const nomeSug = chosen.map(c=>c.nome.trim()).sort((a,b)=>a.length-b.length)[0] || "";
+    mg = { sel, principal, nome: nomeSug, sorted };
+    $("overlay").hidden=false; renderMerge();
+  }
+  function renderMerge(){
+    const list = mg.sorted, chosen = list.filter(c=>mg.sel.has(c.id));
+    if (mg.principal && !mg.sel.has(mg.principal)) mg.principal = chosen.length ? chosen[chosen.length-1].id : null;
+    if (!mg.principal && chosen.length) { mg.principal = chosen[chosen.length-1].id; mg.nome = S.contas.find(c=>c.id===mg.principal).nome; }
+    const plan = chosen.length>1 ? planMerge(chosen, mg.principal, mg.nome) : null;
+    $("overlay").innerHTML=`<div class="sheet" role="dialog" aria-modal="true" aria-labelledby="mg-title">
+      <div class="sheet-head"><h2 id="mg-title">Juntar contas</h2><button class="iconbtn" data-act="close" aria-label="Fechar">✕</button></div>
+      <p style="margin:0;color:var(--muted)">Marque as contas que são a mesma conta cadastrada mais de uma vez. Elas viram uma só, que se repete todo mês, e nenhum pagamento confirmado se perde.</p>
+      <div class="pick">${list.map(c=>{ const k=cfg(c,c.inicio); return `<label class="pickrow ${mg.sel.has(c.id)?"on":""}">
+        <input type="checkbox" data-mgsel="${c.id}" ${mg.sel.has(c.id)?"checked":""}>
+        <span class="who"><b>${esc(c.nome)}</b><small>desde ${monthName(c.inicio,true)}/${c.inicio.slice(2,4)} · <span class="num">${brl(k.base)}</span> · ${(k.pessoas||[]).map(p=>esc(p.nome)).join(", ")||"sem pessoas"}</small></span>
+      </label>`; }).join("")}</div>
+      ${plan ? `
+      <div class="field"><label for="mg-nome">Nome da conta juntada</label><input id="mg-nome" type="text" value="${esc(mg.nome)}"></div>
+      <div class="field"><label for="mg-princ">Usar vencimento e configurações de</label>
+        <select id="mg-princ">${chosen.map(c=>`<option value="${c.id}" ${c.id===mg.principal?"selected":""}>${esc(c.nome)} (desde ${monthName(c.inicio,true)}/${c.inicio.slice(2,4)}, dia ${c.dia})</option>`).join("")}</select></div>
+      <div class="preview mgprev">
+        <div><span>Começa em</span><b>${monthName(plan.conta.inicio)}</b></div>
+        ${plan.periodos.map(p=>`<div><span>${p.label}</span><span class="num">${brl(p.total)} · ${p.n} ${p.n>1?"pessoas":"pessoa"}</span></div>`).join("")}
+        <div><span>Pessoas</span><span>${plan.pessoasNomes.map(esc).join(", ")}</span></div>
+        <div><span>Pagamentos confirmados mantidos</span><b class="num">${plan.nPag}</b></div>
+        ${plan.conflitos?`<div class="err">${plan.conflitos} pagamento(s) estavam confirmados em duas contas no mesmo mês; fica o primeiro.</div>`:""}
+      </div>` : `<p class="small" style="margin:0">Marque pelo menos duas contas.</p>`}
+      <div class="sheet-foot"><span class="small" style="margin:0">Dá para desfazer logo depois.</span><button class="btn primary" data-act="mgdo" ${plan?"":"disabled"}>Juntar ${chosen.length>1?chosen.length+" contas":""}</button></div>
+    </div>`;
+  }
+  // Cada conta "manda" do mês em que começa até o mês anterior ao início da próxima.
+  function planMerge(chosen, principalId, nome){
+    const xs = chosen.slice().sort((a,b)=>a.inicio.localeCompare(b.inicio) || (a.criadaEm||"").localeCompare(b.criadaEm||""));
+    const princ = S.contas.find(c=>c.id===principalId) || xs[xs.length-1];
+    // pessoas unificadas pelo nome
+    const ids = {}; const pid = (p) => { const k=normPessoa(p.nome); return ids[k] ||= (k ? (princ.pessoas||[]).find(q=>normPessoa(q.nome)===k)?.id || p.id : p.id); };
+    for (const c of [princ, ...xs]) for (const v of [c, ...(c.versoes||[])]) for (const p of (v.pessoas||[])) pid(p);
+    const score = (n) => (/[A-ZÀ-Ý]/.test(n)?2:0) + (/[à-ÿ]/i.test(n)?1:0);
+    const canon = {}; for (const c of [princ, ...xs]) for (const v of [c, ...(c.versoes||[])]) for (const p of (v.pessoas||[])) { const id=pid(p), n=String(p.nome||"").trim(); if (!canon[id] || score(n)>score(canon[id])) canon[id]=n; }
+    const mapP = (ps) => (ps||[]).map(p=>({id:pid(p), nome:canon[pid(p)]||p.nome, valor:p.valor??null}));
+    const conf = (c,m) => { const k=cfg(c,m); return {total:k.base, divisao:k.divisao, euPago:k.euPago, pessoas:mapP(k.pessoas)}; };
+    const versoes = [], porMes = {}, periodos = [];
+    xs.forEach((c,i)=>{
+      const ate = xs[i+1] ? addM(xs[i+1].inicio,-1) : null; // null = sem fim
+      if (xs[i+1] && xs[i+1].inicio===c.inicio) return;      // mesma data de início: a última prevalece
+      const desde = c.inicio;
+      versoes.push({desde, ...conf(c,desde)});
+      for (const v of (c.versoes||[])) if (v.desde>desde && (!ate || v.desde<=ate)) versoes.push({desde:v.desde, ...conf(c,v.desde)});
+      for (const [m,val] of Object.entries(c.porMes||{})) if (m>=desde && (!ate || m<=ate)) porMes[m]=val;
+      const k=cfg(c,desde), n=(k.pessoas||[]).length + (k.euPago?1:0), last=periodos[periodos.length-1];
+      if (last && last.total===k.base && last.n===n) last.ate = ate; else periodos.push({desde, ate, total:k.base, n});
+    });
+    versoes.sort((a,b)=>a.desde.localeCompare(b.desde));
+    const curto = (m) => `${monthName(m,true)}/${m.slice(2,4)}`;
+    for (const p of periodos) p.label = !p.ate ? `Desde ${curto(p.desde)}` : p.ate===p.desde ? curto(p.desde) : `${curto(p.desde)} a ${curto(p.ate)}`;
+    const base = versoes.shift();
+    const conta = {...princ, nome:(nome||princ.nome).trim()||princ.nome, inicio:base.desde, total:base.total, divisao:base.divisao, euPago:base.euPago, pessoas:base.pessoas,
+      versoes, porMes, repetir:"sempre", parcelas:0};
+    // pagamentos de todas as contas, com as pessoas unificadas
+    const pags = {}; let nPag=0, conflitos=0;
+    const pidById = {}; for (const c of xs) for (const v of [c, ...(c.versoes||[])]) for (const p of (v.pessoas||[])) pidById[c.id+"|"+p.id]=pid(p);
+    const allPags = Object.values(S.pags).filter(p=>xs.some(c=>c.id===p.contaId)).sort((a,b)=>xs.findIndex(c=>c.id===a.contaId)-xs.findIndex(c=>c.id===b.contaId));
+    for (const pg of allPags){
+      const k = pagKey(conta.id, pg.mes); pags[k] ||= {contaId:conta.id, mes:pg.mes, recebidos:{}};
+      for (const [p,r] of Object.entries(pg.recebidos||{})){
+        const np = pidById[pg.contaId+"|"+p] || p;
+        if (pags[k].recebidos[np]) { conflitos++; continue; }
+        pags[k].recebidos[np]=r; nPag++;
+      }
+    }
+    if (conta.inicio > Object.keys(pags).map(k=>pags[k].mes).sort()[0]) conta.inicio = Object.keys(pags).map(k=>pags[k].mes).sort()[0];
+    const nomes = [...new Set([conta, ...versoes].flatMap(v=>v.pessoas.map(p=>p.nome)))];
+    return {conta, pags, apagar: xs.filter(c=>c.id!==conta.id).map(c=>c.id), periodos, nPag, conflitos, pessoasNomes:nomes};
+  }
+  async function doMerge(){
+    const chosen = mg.sorted.filter(c=>mg.sel.has(c.id)); if (chosen.length<2) return;
+    const plan = planMerge(chosen, mg.principal, $("mg-nome")?.value);
+    const antes = S.store.dump();
+    const d = S.store.dump();
+    for (const id of [...plan.apagar, plan.conta.id]) delete d.contas[id];
+    for (const k of Object.keys(d.pags)) if (chosen.some(c=>c.id===d.pags[k].contaId)) delete d.pags[k];
+    d.contas[plan.conta.id] = plan.conta;
+    Object.assign(d.pags, plan.pags);
+    closeOverlay();
+    await write(S.store.replaceAll(d));
+    showUndo(`${chosen.length} contas viraram “${plan.conta.nome}”`, antes);
+  }
+  let undoT;
+  function showUndo(msg, snapshot){
+    $("undoTxt").textContent = msg; $("undo").hidden=false;
+    $("undoBtn").onclick = async ()=>{ $("undo").hidden=true; await write(S.store.replaceAll(snapshot)); toast("Desfeito: as contas voltaram como estavam"); };
+    clearTimeout(undoT); undoT=setTimeout(()=>$("undo").hidden=true, 12000);
+  }
+  $("mergeBtn").onclick = ()=>openMerge([]);
 
   // ---------- valor de um mês ----------
   let valMes = null;
@@ -555,7 +697,7 @@ input[type=text],input[type=number],input[type=month],input[inputmode]{font:inhe
     closeOverlay(); S.contas = [...S.contas.filter(x=>x.id!==c.id), c].sort((a,b)=>a.dia-b.dia); render();
     await write(S.store.saveConta(c)); toast(o?"Conta atualizada":"Conta cadastrada");
   }
-  function closeOverlay(){ $("overlay").hidden=true; $("overlay").innerHTML=""; }
+  function closeOverlay(){ $("overlay").hidden=true; $("overlay").innerHTML=""; mg=null; }
 
   // ---------- eventos ----------
   document.addEventListener("click", (ev)=>{
@@ -571,6 +713,9 @@ input[type=text],input[type=number],input[type=month],input[inputmode]{font:inhe
     else if(a==="mode"){ editing.divisao=d.v; renderForm(); }
     else if(a==="rep"){ editing.repetir=d.v; renderForm(); }
     else if(a==="valmes") openValMes(d.c);
+    else if(a==="merge") openMerge(d.ids.split(","));
+    else if(a==="mgdo") doMerge();
+    else if(a==="dupignore"){ try{ const ig=JSON.parse(localStorage.getItem("rc-dup-ignorar")||"[]"); ig.push(d.ids.split(",").sort().join(",")); localStorage.setItem("rc-dup-ignorar",JSON.stringify(ig)); }catch(e){} renderDupBanner(); }
     else if(a==="vmsave") saveValMes(false);
     else if(a==="vmclear") saveValMes(true);
     else if(a==="dup"){ const src=editing._orig||editing; const k=cfg(src,S.mes);
@@ -592,7 +737,9 @@ input[type=text],input[type=number],input[type=month],input[inputmode]{font:inhe
       else editing[f]=t.value; renderPreview(); }
     else if(t.dataset.pf){ const p=editing.pessoas[+t.dataset.pi]; if(t.dataset.pf==="nome") p.nome=t.value; else p._txt=t.value; renderPreview(); }
   });
-  document.addEventListener("change",(ev)=>{ if(editing && ev.target.dataset.f==="euPago"){ editing.euPago=ev.target.checked; renderPreview(); } });
+  document.addEventListener("change",(ev)=>{
+    if (mg && ev.target.dataset.mgsel){ const id=ev.target.dataset.mgsel; ev.target.checked?mg.sel.add(id):mg.sel.delete(id); mg.nome=$("mg-nome")?.value||mg.nome; renderMerge(); return; }
+    if (mg && ev.target.id==="mg-princ"){ mg.nome=$("mg-nome")?.value||mg.nome; mg.principal=ev.target.value; renderMerge(); return; } if(editing && ev.target.dataset.f==="euPago"){ editing.euPago=ev.target.checked; renderPreview(); } });
   document.addEventListener("keydown",(ev)=>{ if(ev.key==="Escape" && !$("overlay").hidden) closeOverlay(); });
   $("prev").onclick=()=>{ S.mes=addM(S.mes,-1); render(); };
   $("next").onclick=()=>{ S.mes=addM(S.mes,1); render(); };

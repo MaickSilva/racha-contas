@@ -68,6 +68,7 @@ Informe o nome, o valor e o vencimento, e adicione as pessoas. A divisão aparec
 | **Valor variável** | Para luz, água e gás: o app usa o valor do mês anterior como estimativa, e você informa o valor real quando a conta chega. |
 | **Valor só deste mês** | A conta veio diferente uma vez? Ajuste só aquele mês, e os outros continuam com o valor normal. |
 | **Mudanças sem bagunçar o passado** | Ao editar valor ou pessoas, escolha a partir de qual mês vale a mudança. O histórico fica como estava. |
+| **Juntar contas repetidas** | Se a mesma conta foi cadastrada mais de uma vez, o app avisa e junta tudo em uma conta só, mantendo os pagamentos e o valor de cada período. Dá para desfazer. |
 | **Duplicar** | Crie uma conta parecida a partir de outra, já com as mesmas pessoas. |
 | **Avisos** | Mostra cotas atrasadas, inclusive de meses anteriores, e as que vencem em até 3 dias. |
 | **Cobrar** | Copia uma mensagem pronta, como *"Oi, Ana! Sua parte de Internet Fibra em outubro 2026 é R$ 39,97 (vence dia 10)."*, para colar no WhatsApp. |
